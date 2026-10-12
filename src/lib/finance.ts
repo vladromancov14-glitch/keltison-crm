@@ -140,10 +140,9 @@ export function buildMasterFinance(
   period: FinancePeriod,
   now?: Date
 ): MasterFinanceRow[] {
-  const targetDate = now ?? new Date()
   const filtered = orders.filter(
     (order) =>
-      isCompletedOrder(order.status) && inPeriod(order.created_at, period, targetDate)
+      isCompletedOrder(order.status) && inPeriod(order.created_at, period, now)
   )
 
   const groups = new Map<
