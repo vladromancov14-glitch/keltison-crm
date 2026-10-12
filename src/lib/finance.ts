@@ -104,7 +104,7 @@ export function orderServiceProfit(order: FinanceOrder) {
   return orderMargin(order) - orderMasterPay(order)
 }
 
-export function periodStart(period: FinancePeriod, now = new Date()) {
+export function periodStart(period: FinancePeriod, now: Date = new Date(0)) {
   if (period === "all") return null
   const start = new Date(now)
   start.setHours(0, 0, 0, 0)
