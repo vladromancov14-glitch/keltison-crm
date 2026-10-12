@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useEffect, useState } from "react"
+import { use, useEffect, useState, Suspense } from "react"
 import { statusLabel } from "@/lib/orders"
 import { supabase } from "@/lib/supabase"
 
@@ -13,11 +13,7 @@ type StatusOrder = {
   estimated_ready_at: string | null
 }
 
-export default function OrderStatusPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+function OrderStatusContent({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [order, setOrder] = useState<StatusOrder | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -80,5 +76,17 @@ export default function OrderStatusPage({
         </dl>
       ) : null}
     </section>
+  )
+}
+
+export default function OrderStatusPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Загрузка страницы статуса...</div>}>
+      <OrderStatusContent params={params} />
+    </Suspense>
   )
 }
