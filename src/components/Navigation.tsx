@@ -1,5 +1,6 @@
 "use client"
 
+import { Suspense } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -27,7 +28,31 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
-export function Navigation({ onNavigate }: { onNavigate?: () => void }) {
+function NavigationFallback() {
+  return (
+    <div className="flex h-full flex-col">
+      <div className="px-5 py-5 text-lg font-semibold tracking-wide">
+        КЁЛТИСОН
+      </div>
+      <nav aria-label="Основное меню" className="flex flex-col gap-1 px-3">
+        {items.map((item) => {
+          const Icon = item.icon
+          return (
+            <span
+              key={item.href}
+              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-foreground"
+            >
+              <Icon />
+              {item.label}
+            </span>
+          )
+        })}
+      </nav>
+    </div>
+  )
+}
+
+function NavigationInner({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
 
   return (
@@ -59,5 +84,13 @@ export function Navigation({ onNavigate }: { onNavigate?: () => void }) {
         })}
       </nav>
     </div>
+  )
+}
+
+export function Navigation({ onNavigate }: { onNavigate?: () => void }) {
+  return (
+    <Suspense fallback={<NavigationFallback />}>
+      <NavigationInner onNavigate={onNavigate} />
+    </Suspense>
   )
 }
