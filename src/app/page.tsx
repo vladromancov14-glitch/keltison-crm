@@ -91,7 +91,7 @@ function toPrintBase(order: OrderRow) {
   }
 }
 
-export default function Home() {
+export default function HomeContent() {
   const [orders, setOrders] = useState<OrderRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -376,5 +376,15 @@ export default function Home() {
         <WorkAct order={printJob.data} settings={printJob.settings} />
       ) : null}
     </>
+  )
+}
+
+import { Suspense } from "react"
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div>Загрузка...</div>}>
+      <HomeContent />
+    </Suspense>
   )
 }
