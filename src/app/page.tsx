@@ -91,7 +91,7 @@ function toPrintBase(order: OrderRow) {
   }
 }
 
-export default function HomeContent() {
+ function HomeContent() {
   const [orders, setOrders] = useState<OrderRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -388,3 +388,4 @@ export default function Home() {
     </Suspense>
   )
 }
+
