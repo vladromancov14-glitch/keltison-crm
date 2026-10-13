@@ -52,35 +52,15 @@ function actLines(order: WorkActData): OrderItemRow[] {
   }))
   if (listed.length > 0) return listed
 
-  const cost =
-    moneyAmount(order.repair_cost) ??
-    (order.items ?? []).reduce((sum, item) => sum + itemSum(item), 0)
-  if (cost == null || cost <= 0) {
-    return [
-      {
-        line_no: 1,
-        name: "",
-        article: "",
-        warranty_days: null,
-        price: null,
-        discount: null,
-        quantity: null,
-      },
-    ]
-  }
-
-  const defect = order.declared_defect?.trim()
   return [
     {
       line_no: 1,
-      name: defect
-        ? `Ремонтные работы / устранение неисправности: ${defect}`
-        : "Ремонтные работы / устранение неисправности",
-      article: "—",
-      warranty_days: guarantee,
-      price: cost,
-      discount: 0,
-      quantity: 1,
+      name: "",
+      article: "",
+      warranty_days: null,
+      price: null,
+      discount: null,
+      quantity: null,
     },
   ]
 }

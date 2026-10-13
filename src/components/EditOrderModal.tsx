@@ -295,6 +295,19 @@ function Editor({
       return
     }
 
+    const incomplete = items.find(
+      (item) =>
+        !item.name.trim() &&
+        (item.price.trim() !== "" ||
+          item.article.trim() !== "" ||
+          (item.quantity.trim() !== "" && item.quantity.trim() !== "1"))
+    )
+    if (incomplete) {
+      setPending(false)
+      setError("Укажите название работы или услуги для каждой заполненной позиции.")
+      return
+    }
+
     const rows = items
       .filter((item) => item.name.trim())
       .map((item, index) => ({
@@ -520,7 +533,7 @@ function Editor({
       </Field>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">Работы и запчасти</h3>
+        <h3 className="text-sm font-semibold">Проделанные работы и услуги</h3>
         <div className="flex flex-wrap gap-2">
           <select
             defaultValue=""
@@ -544,16 +557,20 @@ function Editor({
             variant="outline"
             onClick={() => setItems((current) => [...current, emptyItem()])}
           >
-            Добавить позицию
+            Добавить работу / услугу
           </Button>
         </div>
       </div>
+      <p className="text-xs text-muted-foreground">
+        Эти позиции попадут в акт выполненных работ. Причина обращения туда не
+        подставляется.
+      </p>
       <div className="grid gap-2">
         {items.map((item, index) => (
           <div key={item.key} className="grid gap-2 rounded-lg border border-border p-2 sm:grid-cols-6">
             <Input
               className="sm:col-span-2"
-              placeholder={`${index + 1}. Позиция`}
+              placeholder={`${index + 1}. Название работы или услуги`}
               value={item.name}
               onChange={(event) => updateItem(item.key, { name: event.target.value })}
             />
