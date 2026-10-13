@@ -1,10 +1,11 @@
 "use client"
 
-import { Suspense } from "react"
+import { Suspense, useState } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   ClipboardList,
+  LogOut,
   Settings,
   Users,
   Wallet,
@@ -13,6 +14,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { cn } from "cn"
+import { createClient } from "@/lib/supabase/client"
 
 const items: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/", label: "Заказы", icon: ClipboardList },
@@ -54,13 +56,24 @@ function NavigationFallback() {
 
 function NavigationInner({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
+  const router = useRouter()
+  const [loggingOut, setLoggingOut] = useState(false)
+
+  async function logout() {
+    setLoggingOut(true)
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    onNavigate?.()
+    router.replace("/login")
+    router.refresh()
+  }
 
   return (
     <div className="flex h-full flex-col">
       <div className="px-5 py-5 text-lg font-semibold tracking-wide">
         КЁЛТИСОН
       </div>
-      <nav aria-label="Основное меню" className="flex flex-col gap-1 px-3">
+      <nav aria-label="Основное меню" className="flex flex-1 flex-col gap-1 px-3">
         {items.map((item) => {
           const active = isActive(pathname, item.href)
           const Icon = item.icon
@@ -83,6 +96,17 @@ function NavigationInner({ onNavigate }: { onNavigate?: () => void }) {
           )
         })}
       </nav>
+      <div className="mt-auto border-t border-border p-3">
+        <button
+          type="button"
+          disabled={loggingOut}
+          onClick={() => void logout()}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+        >
+          <LogOut />
+          {loggingOut ? "Выход…" : "Выйти"}
+        </button>
+      </div>
     </div>
   )
 }

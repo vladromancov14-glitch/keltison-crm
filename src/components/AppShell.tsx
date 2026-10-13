@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useState } from "react"
+import { usePathname } from "next/navigation"
 import { Menu } from "lucide-react"
 
 import { Navigation } from "@/components/Navigation"
@@ -13,8 +14,17 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+function isChromeHidden(pathname: string) {
+  return pathname === "/login" || pathname.startsWith("/status/")
+}
+
+function AppShellInner({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
   const [open, setOpen] = useState(false)
+
+  if (isChromeHidden(pathname)) {
+    return <div className="min-h-full">{children}</div>
+  }
 
   return (
     <div className="flex min-h-full flex-col md:flex-row">
@@ -50,5 +60,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="flex-1">{children}</main>
       </div>
     </div>
+  )
+}
+
+export function AppShell({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={<div className="min-h-full">{children}</div>}>
+      <AppShellInner>{children}</AppShellInner>
+    </Suspense>
   )
 }

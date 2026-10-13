@@ -84,3 +84,73 @@ create table if not exists public.parts (
 );
 
 alter table public.order_items add column if not exists part_id uuid references public.parts (id);
+
+-- ---------------------------------------------------------------------------
+-- Авторизация CRM + публичный статус заказа (QR)
+-- 1) В Supabase → Authentication → Users создайте ОДНОГО пользователя (email/пароль).
+-- 2) Выполните этот блок в SQL Editor.
+-- После этого CRM доступна только после входа; /status/<id> остаётся открытым.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.get_order_public_status(p_id uuid)
+returns table (
+  order_number integer,
+  status text,
+  device_type text,
+  brand_model text,
+  created_at timestamp with time zone,
+  estimated_ready_at date
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    o.order_number,
+    o.status,
+    o.device_type,
+    o.brand_model,
+    o.created_at,
+    o.estimated_ready_at
+  from public.orders o
+  where o.id = p_id;
+$$;
+
+revoke all on function public.get_order_public_status(uuid) from public;
+grant execute on function public.get_order_public_status(uuid) to anon, authenticated;
+
+alter table public.clients enable row level security;
+alter table public.orders enable row level security;
+alter table public.order_items enable row level security;
+alter table public.parts enable row level security;
+alter table public.masters enable row level security;
+
+drop policy if exists "crm_clients_all" on public.clients;
+create policy "crm_clients_all" on public.clients
+  for all to authenticated
+  using (true)
+  with check (true);
+
+drop policy if exists "crm_orders_all" on public.orders;
+create policy "crm_orders_all" on public.orders
+  for all to authenticated
+  using (true)
+  with check (true);
+
+drop policy if exists "crm_order_items_all" on public.order_items;
+create policy "crm_order_items_all" on public.order_items
+  for all to authenticated
+  using (true)
+  with check (true);
+
+drop policy if exists "crm_parts_all" on public.parts;
+create policy "crm_parts_all" on public.parts
+  for all to authenticated
+  using (true)
+  with check (true);
+
+drop policy if exists "crm_masters_all" on public.masters;
+create policy "crm_masters_all" on public.masters
+  for all to authenticated
+  using (true)
+  with check (true);
