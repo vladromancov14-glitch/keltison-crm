@@ -62,7 +62,7 @@ type StockPart = {
   quantity: number | null
 }
 
-function emptyItem(): DraftItem {
+function emptyService(): DraftItem {
   return {
     key: crypto.randomUUID(),
     partId: null,
@@ -90,21 +90,16 @@ function clientOf(clients: EditableOrder["clients"]) {
   return Array.isArray(clients) ? (clients[0] ?? null) : clients
 }
 
+function draftSum(item: DraftItem) {
+  return itemSum({
+    price: item.price,
+    discount: item.discount,
+    quantity: item.quantity,
+  })
+}
+
 function toDrafts(items: OrderItemRow[] | null): DraftItem[] {
-  if (!items?.length) {
-    return [
-      {
-        key: crypto.randomUUID(),
-        partId: null,
-        name: "",
-        article: "",
-        warranty_days: "",
-        price: "",
-        discount: "0",
-        quantity: "1",
-      },
-    ]
-  }
+  if (!items?.length) return [emptyService()]
   return [...items]
     .sort((a, b) => (a.line_no ?? 0) - (b.line_no ?? 0))
     .map((item) => ({
@@ -208,6 +203,22 @@ function Editor({
     )
   }
 
+  const services = items.filter((item) => !item.partId)
+  const stockLines = items.filter((item) => item.partId)
+  const servicesTotal = services
+    .filter((item) => item.name.trim())
+    .reduce((sum, item) => sum + draftSum(item), 0)
+  const partsTotal = stockLines
+    .filter((item) => item.name.trim())
+    .reduce((sum, item) => sum + draftSum(item), 0)
+  const linesTotal = servicesTotal + partsTotal
+  const hasNamedLines = items.some((item) => item.name.trim())
+  const effectiveRepairCost = hasNamedLines
+    ? linesTotal
+    : repairCost.trim() === ""
+      ? null
+      : Number(repairCost)
+
   function attachPart(partId: string) {
     const part = parts.find((item) => item.id === partId)
     if (!part) return
@@ -226,10 +237,7 @@ function Editor({
       discount: "0",
       quantity: "1",
     }
-    setItems((current) => {
-      const blank = current.length === 1 && !current[0]?.name.trim()
-      return blank ? [line] : [...current, line]
-    })
+    setItems((current) => [...current, line])
   }
 
   async function save(event: React.FormEvent) {
@@ -255,6 +263,56 @@ function Editor({
       }
     }
 
+    const incomplete = services.find(
+      (item) =>
+        !item.name.trim() &&
+        (item.price.trim() !== "" ||
+          (item.quantity.trim() !== "" && item.quantity.trim() !== "1"))
+    )
+    if (incomplete) {
+      setPending(false)
+      setError("Укажите название услуги для каждой заполненной строки.")
+      return
+    }
+
+    const rows = items
+      .filter((item) => item.name.trim())
+      .map((item, index) => ({
+        order_id: order.id,
+        part_id: item.partId,
+        line_no: index + 1,
+        name: item.name.trim(),
+        article: item.partId ? item.article.trim() || null : null,
+        warranty_days: item.partId
+          ? item.warranty_days.trim() === ""
+            ? Number(guaranteeDays) || 30
+            : Number(item.warranty_days)
+          : Number(guaranteeDays) || 30,
+        price: item.price.trim() === "" ? null : Number(item.price),
+        discount: item.partId
+          ? item.discount.trim() === ""
+            ? 0
+            : Number(item.discount)
+          : 0,
+        quantity: item.quantity.trim() === "" ? 1 : Number(item.quantity),
+      }))
+
+    const savedRepairCost =
+      rows.length > 0
+        ? rows.reduce(
+            (sum, row) =>
+              sum +
+              itemSum({
+                price: row.price,
+                discount: row.discount,
+                quantity: row.quantity,
+              }),
+            0
+          )
+        : repairCost.trim() === ""
+          ? null
+          : Number(repairCost)
+
     const { error: orderError } = await supabase
       .from("orders")
       .update({
@@ -265,7 +323,7 @@ function Editor({
         appearance: appearance.trim() || null,
         kit: kit.trim() || null,
         estimated_ready_at: readyAt || null,
-        repair_cost: repairCost.trim() === "" ? null : Number(repairCost),
+        repair_cost: savedRepairCost,
         cost_price: costPrice.trim() === "" ? 0 : Number(costPrice),
         prepayment: prepayment.trim() === "" ? 0 : Number(prepayment),
         receiver_notes: notes.trim() || null,
@@ -294,36 +352,6 @@ function Editor({
       setError(deleteError.message)
       return
     }
-
-    const incomplete = items.find(
-      (item) =>
-        !item.name.trim() &&
-        (item.price.trim() !== "" ||
-          item.article.trim() !== "" ||
-          (item.quantity.trim() !== "" && item.quantity.trim() !== "1"))
-    )
-    if (incomplete) {
-      setPending(false)
-      setError("Укажите название работы или услуги для каждой заполненной позиции.")
-      return
-    }
-
-    const rows = items
-      .filter((item) => item.name.trim())
-      .map((item, index) => ({
-        order_id: order.id,
-        part_id: item.partId,
-        line_no: index + 1,
-        name: item.name.trim(),
-        article: item.article.trim() || null,
-        warranty_days:
-          item.warranty_days.trim() === ""
-            ? Number(guaranteeDays) || 30
-            : Number(item.warranty_days),
-        price: item.price.trim() === "" ? null : Number(item.price),
-        discount: item.discount.trim() === "" ? 0 : Number(item.discount),
-        quantity: item.quantity.trim() === "" ? 1 : Number(item.quantity),
-      }))
 
     const previousQty = new Map<string, number>()
     for (const item of order.order_items ?? []) {
@@ -432,8 +460,28 @@ function Editor({
         <Field label="Комплектация">
           <Input value={kit} onChange={(event) => setKit(event.target.value)} />
         </Field>
-        <Field label="Ориентировочная стоимость">
-          <Input type="number" min="0" step="0.01" value={repairCost} onChange={(event) => setRepairCost(event.target.value)} />
+        <Field
+          label={
+            hasNamedLines
+              ? "Стоимость ремонта (сумма услуг и запчастей)"
+              : "Ориентировочная стоимость"
+          }
+        >
+          <Input
+            type="number"
+            min="0"
+            step="0.01"
+            value={
+              hasNamedLines
+                ? String(linesTotal)
+                : repairCost
+            }
+            readOnly={hasNamedLines}
+            onChange={(event) => {
+              if (!hasNamedLines) setRepairCost(event.target.value)
+            }}
+            className={hasNamedLines ? "bg-muted" : undefined}
+          />
         </Field>
         <Field label="Затраты на запчасти / закупку (₽)">
           <Input
@@ -532,9 +580,87 @@ function Editor({
         />
       </Field>
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">Проделанные работы и услуги</h3>
-        <div className="flex flex-wrap gap-2">
+      <section className="grid gap-2 rounded-xl border border-border p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold">Услуги</h3>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setItems((current) => [...current, emptyService()])}
+          >
+            Добавить услугу
+          </Button>
+        </div>
+        <div className="hidden grid-cols-[minmax(0,1fr)_7rem_5rem_7rem_auto] gap-2 text-xs text-muted-foreground sm:grid">
+          <span>Услуга</span>
+          <span>Цена, ₽</span>
+          <span>Кол-во</span>
+          <span>Сумма</span>
+          <span />
+        </div>
+        <div className="grid gap-2">
+          {services.map((item, index) => (
+            <div
+              key={item.key}
+              className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_5rem_7rem_auto] sm:items-center"
+            >
+              <Input
+                placeholder={`${index + 1}. Например: замена экрана`}
+                value={item.name}
+                onChange={(event) =>
+                  updateItem(item.key, { name: event.target.value })
+                }
+              />
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Цена"
+                value={item.price}
+                onChange={(event) =>
+                  updateItem(item.key, { price: event.target.value })
+                }
+              />
+              <Input
+                type="number"
+                min="0"
+                step="1"
+                placeholder="Кол-во"
+                value={item.quantity}
+                onChange={(event) =>
+                  updateItem(item.key, { quantity: event.target.value })
+                }
+              />
+              <div className="flex h-8 items-center text-sm tabular-nums">
+                {draftSum(item).toLocaleString("ru-RU")} ₽
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                className="justify-self-start"
+                onClick={() =>
+                  setItems((current) => {
+                    const next = current.filter((row) => row.key !== item.key)
+                    return next.some((row) => !row.partId) ? next : [...next, emptyService()]
+                  })
+                }
+              >
+                Удалить
+              </Button>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-between border-t border-border pt-2 text-sm font-medium">
+          <span>Сумма услуг</span>
+          <span className="tabular-nums">
+            {servicesTotal.toLocaleString("ru-RU")} ₽
+          </span>
+        </div>
+      </section>
+
+      <section className="grid gap-2 rounded-xl border border-border p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold">Запчасти со склада</h3>
           <select
             defaultValue=""
             aria-label="Добавить деталь со склада"
@@ -548,82 +674,83 @@ function Editor({
             {parts.map((part) => (
               <option key={part.id} value={part.id}>
                 {part.title || "Без названия"} · {part.quantity ?? 0} шт. ·{" "}
-                {asText(part.selling_price) || "0"} Р
+                {asText(part.selling_price) || "0"} ₽
               </option>
             ))}
           </select>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setItems((current) => [...current, emptyItem()])}
-          >
-            Добавить работу / услугу
-          </Button>
         </div>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Эти позиции попадут в акт выполненных работ. Причина обращения туда не
-        подставляется.
-      </p>
-      <div className="grid gap-2">
-        {items.map((item, index) => (
-          <div key={item.key} className="grid gap-2 rounded-lg border border-border p-2 sm:grid-cols-6">
-            <Input
-              className="sm:col-span-2"
-              placeholder={`${index + 1}. Название работы или услуги`}
-              value={item.name}
-              onChange={(event) => updateItem(item.key, { name: event.target.value })}
-            />
-            <Input
-              placeholder="Артикул"
-              value={item.article}
-              onChange={(event) => updateItem(item.key, { article: event.target.value })}
-            />
-            <Input
-              type="number"
-              placeholder="Гарантия, дн."
-              value={item.warranty_days}
-              onChange={(event) => updateItem(item.key, { warranty_days: event.target.value })}
-            />
-            <Input
-              type="number"
-              placeholder="Цена"
-              value={item.price}
-              onChange={(event) => updateItem(item.key, { price: event.target.value })}
-            />
-            <Input
-              type="number"
-              placeholder="Скидка"
-              value={item.discount}
-              onChange={(event) => updateItem(item.key, { discount: event.target.value })}
-            />
-            <Input
-              type="number"
-              placeholder="Кол-во"
-              value={item.quantity}
-              onChange={(event) => updateItem(item.key, { quantity: event.target.value })}
-            />
-            <div className="flex items-center justify-between gap-2 sm:col-span-5">
-              <span className="text-sm text-muted-foreground">
-                Сумма: {itemSum({
-                  price: item.price,
-                  discount: item.discount,
-                  quantity: item.quantity,
-                }).toLocaleString("ru-RU")} Р
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() =>
-                  setItems((current) => current.filter((row) => row.key !== item.key))
-                }
+        {stockLines.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            Пока без запчастей — только услуги выше.
+          </p>
+        ) : (
+          <div className="grid gap-2">
+            {stockLines.map((item) => (
+              <div
+                key={item.key}
+                className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_6rem_5rem_7rem_auto] sm:items-center"
               >
-                Удалить
-              </Button>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">{item.name}</div>
+                  {item.article ? (
+                    <div className="text-xs text-muted-foreground">
+                      Арт. {item.article}
+                    </div>
+                  ) : null}
+                </div>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Цена"
+                  value={item.price}
+                  onChange={(event) =>
+                    updateItem(item.key, { price: event.target.value })
+                  }
+                />
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="Кол-во"
+                  value={item.quantity}
+                  onChange={(event) =>
+                    updateItem(item.key, { quantity: event.target.value })
+                  }
+                />
+                <div className="flex h-8 items-center text-sm tabular-nums">
+                  {draftSum(item).toLocaleString("ru-RU")} ₽
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="justify-self-start"
+                  onClick={() =>
+                    setItems((current) =>
+                      current.filter((row) => row.key !== item.key)
+                    )
+                  }
+                >
+                  Удалить
+                </Button>
+              </div>
+            ))}
+            <div className="flex justify-between border-t border-border pt-2 text-sm font-medium">
+              <span>Сумма запчастей</span>
+              <span className="tabular-nums">
+                {partsTotal.toLocaleString("ru-RU")} ₽
+              </span>
             </div>
           </div>
-        ))}
-      </div>
+        )}
+      </section>
+
+      {hasNamedLines ? (
+        <p className="text-sm font-semibold tabular-nums">
+          Итого к стоимости ремонта:{" "}
+          {(effectiveRepairCost ?? 0).toLocaleString("ru-RU")} ₽
+        </p>
+      ) : null}
       {error ? (
         <p className="text-sm text-destructive" role="alert">
           {error}
